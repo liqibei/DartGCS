@@ -1,0 +1,13 @@
+{
+  "id": "launch_20260928_180518",
+  "created_at": "2026-09-28T10:05:18.954695+00:00",
+  "dart_addr": 49,
+  "params": {
+    "yaw_bias": 1.2
+  },
+  "notes": "首架次联调",
+  "refs": {
+    "video": null,
+    "csv": null
+  }
+}

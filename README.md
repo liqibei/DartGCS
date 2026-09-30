@@ -37,16 +37,50 @@ Upper/
 
 ## 快速启动
 
-Ubuntu 与 Windows 都能跑，差异见下表。
+### 日常使用：一键启动（推荐）
+
+前置条件只有一条：装好 **Python ≥ 3.10**（Windows 安装时勾选 *Add to PATH*）。前端已预构建，不需要 Node/npm。
+
+**Windows**：双击仓库根目录的 `启动上位机.bat`，保持黑窗口开着（关掉窗口即停止上位机）。
+
+**Linux / macOS**：
+
+```bash
+./start.sh
+```
+
+启动脚本首次运行会自动创建 venv 并联网装依赖（约 1~2 分钟），之后秒启。看到
+
+```
+  Dart GCS:  http://127.0.0.1:8787
+```
+
+后，浏览器打开 **http://127.0.0.1:8787** 即可使用。默认开启 Mock 仿真设备（12 镖 + 镖架 + 基地全部在线），无硬件也能操作全流程。
+
+**接真实硬件**：先设环境变量再启动——
+
+```bash
+# Windows (PowerShell)：$env:DART_GCS_SERIAL="COM5"; $env:DART_GCS_MOCK="0"; .\启动上位机.bat
+# Linux：DART_GCS_SERIAL=/dev/ttyACM0 DART_GCS_MOCK=0 ./start.sh
+```
+
+**局域网访问**（其他电脑浏览器打开本机页面）：把 `DART_GCS_HOST` 设为 `0.0.0.0`（见下表），其他电脑访问 `http://<本机IP>:8787`。
+
+**常见问题**：
+- 端口被占用 → 换 `DART_GCS_API_PORT`（如 `8788`），浏览器地址跟着改
+- Linux 串口无权限 → `sudo usermod -aG dialout $USER` 后重新登录
+- Windows 双击 bat 闪退 → 多半是没装 Python 或没勾 Add to PATH，命令行里手动跑一次看报错
+
+### 开发者命令
 
 ```bash
 # 后端（首次）
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-# 启动（含 Mock 仿真，浏览器打开 http://127.0.0.1:8787）
-.venv/bin/python -m uvicorn app.main:app --port 8787        # Ubuntu
-.venv\Scripts\python -m app.main                            # Windows（必须走本入口）
+# 启动（含 Mock 仿真，浏览器打开 http://127.0.0.1:8787；必须走 app.main 入口，不要直接 uvicorn）
+.venv/bin/python -m app.main                                # Ubuntu
+#.venv\Scripts\python -m app.main                            # Windows
 
 # 前端（改动后重新构建，产物由后端托管）
 cd frontend && npm install && npm run build
@@ -63,6 +97,7 @@ cd backend && .venv/bin/python -m pytest tests -q
 | `DART_GCS_BAUD` | 2000000 | 串口波特率（CDC 下仅形式参数） |
 | `DART_GCS_MOCK` | 1 | 仿真设备开关，接真硬件前置 0 |
 | `DART_GCS_DATA` | data | 发次归档根目录（后续整体迁到 MiniPC 只改这里） |
+| `DART_GCS_HOST` | 127.0.0.1 | 监听地址，设 `0.0.0.0` 允许局域网内其他电脑访问 |
 | `DART_GCS_API_PORT` | 8787 | 整站端口 |
 
 ## 已实现（对应协议草案 v0.2）

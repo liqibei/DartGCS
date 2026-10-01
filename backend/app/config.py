@@ -8,7 +8,9 @@ from pathlib import Path
 
 @dataclass(slots=True)
 class Settings:
-    host: str = "127.0.0.1"
+    # 默认 0.0.0.0：手机/其他电脑连入任一同一网络即可访问（现场工具的常态需求）；
+    # 只在本机用时可用 DART_GCS_HOST=127.0.0.1 收回
+    host: str = "0.0.0.0"
     api_port: int = 8787
     serial_port: str | None = None  # USB CDC：PC ↔ C3 主机，唯一真实链路
     baud: int = 2_000_000
@@ -18,7 +20,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            host=os.getenv("DART_GCS_HOST", "127.0.0.1"),
+            host=os.getenv("DART_GCS_HOST", "0.0.0.0"),
             api_port=int(os.getenv("DART_GCS_API_PORT", "8787")),
             serial_port=os.getenv("DART_GCS_SERIAL") or None,
             baud=int(os.getenv("DART_GCS_BAUD", "2000000")),

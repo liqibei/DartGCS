@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
 
 from .api.routes import router
 from .api.ws import WsHub
@@ -23,6 +22,7 @@ from .config import Settings
 from .devices.manager import DeviceManager, FrameRing
 from .links import LinkDriver, MockLink, SerialLink
 from .services.archive import SessionArchive
+from .services.hotspot import HotspotService
 from .services.logs import LogService
 from .services.monitor import MonitorService
 from .services.params import ParamService
@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     params = ParamService(manager)
     monitor = MonitorService(manager, hub)
     logs = LogService(manager)
+    hotspot = HotspotService(exposed=settings.host == "0.0.0.0", port=settings.api_port)
 
     links: list[LinkDriver] = []
     if settings.serial_port:
@@ -81,6 +82,7 @@ async def lifespan(app: FastAPI):
     app.state.params = params
     app.state.monitor = monitor
     app.state.logs = logs
+    app.state.hotspot = hotspot
     app.state.links = links
     app.state.started_at = time.time()
     app.state.last_session_by_dart = {}
@@ -120,9 +122,21 @@ async def ws_endpoint(ws: WebSocket):
 
 
 # 前端构建产物存在时由后端直接托管（单进程部署：一条命令即整站）
+# 前端构建产物存在时由后端直接托管（单进程部署：一条命令即整站）。
+# SPA 路由（/base 等）没有真实文件，回退到 index.html 由前端路由接管。
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        if full_path.startswith(("api/", "ws")):
+            raise HTTPException(404)
+        candidate = _FRONTEND_DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIST / "index.html")
 
 
 if __name__ == "__main__":

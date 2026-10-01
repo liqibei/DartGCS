@@ -9,7 +9,7 @@ interface DeviceState {
 }
 
 interface HistoryState {
-  /** 遥测历史：key = `${addr}:${var}`，最多保留 120 点 */
+  /** 遥测历史：key = `${addr}:${var}`，最多保留 240 点（20Hz×12s） */
   map: Map<string, number[]>;
 }
 
@@ -36,7 +36,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           const key = `${p.addr}:${p.var}`;
           const arr = mapRef.current.get(key) ?? [];
           arr.push(p.value);
-          if (arr.length > 120) arr.shift();
+          if (arr.length > 240) arr.shift();
           mapRef.current.set(key, arr);
         }
         bump();

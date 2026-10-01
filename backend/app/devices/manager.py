@@ -132,6 +132,12 @@ class DeviceManager:
             self.hub.update(frame.id, 0x71, cur, now, name="cur_pos_mm")
             self.hub.update(frame.id, 0x72, tgt, now, name="tgt_pos_mm")
             self.hub.update(frame.id, 0x73, running, now, name="running")
+            if len(frame.payload) >= 10:  # v0.2.1：BSTATE 追加灯位
+                self.hub.update(frame.id, 0x74, frame.payload[9], now, name="light")
+            if len(frame.payload) >= 11:  # v0.2.1：BSTATE 追加舱门位
+                self.hub.update(frame.id, 0x75, frame.payload[10], now, name="door")
+            if len(frame.payload) >= 12:  # v0.2.1：BSTATE 追加开启状态位
+                self.hub.update(frame.id, 0x76, frame.payload[11], now, name="started")
         # 其余帧已入环形缓冲，由服务层按需处理
 
     @staticmethod

@@ -209,3 +209,311 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+
+/* 选中态按钮（模式档位 / 启停 / 灯） */
+button.seg-on {
+  border-color: var(--accent);
+  background: rgba(79, 156, 255, 0.16);
+  color: var(--accent);
+}
+
+/* 基地位置条：行程可视化 */
+.posbar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: #1d2430;
+  border: 1px solid var(--line);
+}
+
+.posbar-knob {
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform: translateX(-4px);
+  transition: left 0.12s linear;
+}
+
+.posbar-marker {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 20px;
+  background: var(--green);
+  transform: translateX(-1px);
+}
+
+/* 基地页：主次布局 —— 位置监测通栏主卡，控制卡三列 */
+.base-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.card-pos {
+  grid-column: 1 / -1;
+}
+
+.pos-hero {
+  display: flex;
+  gap: 48px;
+  align-items: flex-end;
+  margin: 2px 0 14px;
+  flex-wrap: wrap;
+}
+
+.big-num {
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-num small {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.posbar-big {
+  height: 18px;
+  border-radius: 9px;
+}
+
+.posbar-big .posbar-knob {
+  width: 12px;
+  height: 26px;
+  top: -5px;
+  transform: translateX(-6px);
+}
+
+.posbar-big .posbar-marker {
+  height: 28px;
+  top: -5px;
+}
+
+@media (max-width: 1100px) {
+  .base-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 按下即有物理反馈 */
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(1.25);
+}
+
+/* 运动控制卡的 开启指令/发射指令 视图切换：通栏、醒目 */
+.seg-toggle {
+  display: flex;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg-toggle button {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  padding: 9px 0;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+}
+
+.seg-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+
+.seg-toggle button.seg-on {
+  background: rgba(79, 156, 255, 0.18);
+  color: var(--accent);
+}
+
+.card-wide {
+  grid-column: 1 / -1;
+}
+
+/* 侧栏 手机控制热点卡 */
+.hotspot-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hotspot-card a {
+  color: var(--accent);
+}
+
+/* 使能状态色：绿=已使能（当前动作：失能），红=未使能（当前动作：使能） */
+button.btn-green {
+  border-color: var(--green);
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--green);
+}
+
+button.btn-red {
+  border-color: var(--red);
+  background: rgba(255, 107, 107, 0.15);
+  color: var(--red);
+}
+
+/* 总览基地卡：高度随内容，不留底部空白 */
+.card-base {
+  align-self: start;
+}
+
+/* ---- 手机适配（≤720px）：侧栏变顶栏，网格单列，杜绝横向溢出 ---- */
+@media (max-width: 720px) {
+  .app {
+    flex-direction: column;
+  }
+
+  aside {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 8px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo {
+    margin: 0;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  nav {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    gap: 2px;
+  }
+
+  nav a {
+    padding: 6px 10px;
+    white-space: nowrap;
+    margin: 0;
+  }
+
+  .side-note {
+    display: none; /* 热点/局域网地址是给 PC 操作员看的，手机端隐藏 */
+  }
+
+  main {
+    padding: 0 12px 32px;
+  }
+
+  h2 {
+    font-size: 16px;
+  }
+
+  .grid,
+  .base-grid {
+    grid-template-columns: minmax(0, 1fr) !important; /* minmax(0,·) 压掉内容 min-content，杜绝横向溢出 */
+  }
+
+  .grid > *,
+  .base-grid > * {
+    min-width: 0;
+  }
+
+  .pos-hero {
+    gap: 20px;
+  }
+
+  .big-num {
+    font-size: 30px;
+  }
+
+  table.frames {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* 页头状态行允许换行 */
+  header {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 720px) {
+  .param-range {
+    display: none; /* 参数范围说明在窄屏隐藏，避免撑破卡片 */
+  }
+
+  table.tele input[type="number"] {
+    width: 80px !important;
+  }
+}
+
+/* 基地轨道可视化：全长 700mm = 行程 560（±280）+ 板宽 140。
+   装甲板永远蓝色，两侧灯条蓝色，板中间金色 ROBOMASTER */
+.track {
+  position: relative;
+  height: 18px;
+  border-radius: 6px;
+  background: #1d2430;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.track-big {
+  height: 30px;
+  border-radius: 8px;
+}
+
+.track-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--green);
+  transform: translateX(-1px);
+}
+
+.track-plate {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: calc(100% * 140 / 700);
+  transform: translateX(-50%);
+  display: flex;
+  border-radius: 3px;
+  overflow: hidden;
+  transition: left 0.12s linear;
+  background: #05070b;  /* 板中间黑色 */
+  border: 1px solid #1a2130;
+}
+
+.plate-strip {
+  width: 8%;  /* 两侧蓝色灯条，窄 */
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(79, 156, 255, 0.6);
+}
+
+.plate-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.plate-text {
+  color: #ffd700;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255, 215, 0, 0.55);
+}

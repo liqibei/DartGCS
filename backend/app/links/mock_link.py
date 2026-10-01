@@ -16,14 +16,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import random
 import struct
 import time
 
 from ..protocol import (
+    BASE_DOOR,
+    BASE_LIGHT,
     BASE_MODE,
     BASE_RUN,
     BASE_STATE,
     BASE_TARGET,
+    BASE_TRIG,
     BlockCmds,
     DBG_ECHO,
     LAUNCHER_MODE,
@@ -136,6 +140,10 @@ class _SimDevice:
         elif cmd == c.save:
             for p in self.params:
                 self.saved[p.pid] = self.current[p.pid]
+            self.up(c.write_rsp, struct.pack("<H", 0xFFFF) + bytes([RESULT_OK]), seq)
+        elif cmd == c.load:  # v0.2.1：flash 已存值 → 当前值（放弃会话修改，不恢复出厂）
+            for p in self.params:
+                self.current[p.pid] = self.saved[p.pid]
             self.up(c.write_rsp, struct.pack("<H", 0xFFFF) + bytes([RESULT_OK]), seq)
         elif cmd == c.reset:
             for p in self.params:
@@ -325,23 +333,76 @@ class _BaseSim(_SimDevice):
     def __init__(self, link: "MockLink") -> None:
         super().__init__(link, 0x20)
         self.cmds = BlockCmds(0x3000)
-        self.add_param(1, "speed", F32, "mm/s", 100, 2000, 500.0)
-        self.add_param(2, "accel", F32, "mm/s2", 100, 5000, 1000.0)
-        self.add_param(3, "range", F32, "mm", 100, 280, 280.0)
-        self.add_param(4, "home", F32, "mm", -280, 280, 0.0)
+        # 参数目录基线（需求方定义，中文显示名走 PC 端映射）：
+        # speed=平移速度（默认 0.5m/s），estop_speed=停止速度（默认 1m/s）——急停=装甲板停止运动，失能=意外保护断电
+        # move_interval=运动间隔 0-500ms，launch_delay=发射延迟 0-500ms
+        self.add_param(1, "speed", F32, "mm/s", 100, 1500, 500.0)
+        self.add_param(2, "estop_speed", F32, "mm/s", 100, 1500, 1000.0)
+        self.add_param(3, "move_interval", U16, "ms", 0, 500, 0)
+        self.add_param(4, "launch_delay", U16, "ms", 0, 500, 200)
+        self.add_param(5, "range", F32, "mm", 100, 280, 280.0)
         self.mode = 0
         self.cur = 0.0
         self.target = 0.0
-        self.running = 0
+        self.enabled = 0         # 电机使能（BRUN，BSTATE"运行状态"位）
+        self.prog = 0            # 运动程序执行中
+        self.dash = 0            # 1=本次行程用停止速度
+        self.light = 0
+        self.door = 0
+        self.speed_sel = 0       # 0=平移速度 / 1=停止速度（手动 BTARGET 携带）
+        self.hold = 0            # 1=停住且不换点（发射延迟等待 / 停止指令 10s / 冲刺到位后驻留）
+        self.started = 0         # 开启状态：1=开启（发射指令有效），0=停止（发射指令无效）
+        self.src_manual = False  # 控制来源：True=手动目标（纯前往，到位即停，不进入巡航）
+        self._post_dash_hold = False  # 发射指令冲刺到位后：驻留 10s（随机恢复巡航，末端保持停止）
+        self._resume_task: asyncio.Task | None = None
+        self._next_pick: float | None = None
+
+    def _rand_point(self) -> float:
+        r = float(self.current[5])
+        return random.uniform(-r, r)
+
+    def _wander_pick(self) -> None:
+        """随机/末端巡航：换一个随机目标；到位后驻留「运动间隔」再换下一个。"""
+        self.target = self._rand_point()
+        self._next_pick = None
 
     def periodic(self, t: float) -> None:
-        if self.running:
-            step = float(self.current[1]) * 0.05
+        if self.enabled and self.prog and not self.hold:
+            spd = float(self.current[2] if self.dash else self.current[1])
+            step = spd * 0.05
             if abs(self.target - self.cur) <= step:
                 self.cur = self.target
+                if self.dash:
+                    self.dash = 0  # 冲刺到位，恢复巡航速度
+                # 发射指令冲刺到位：停到目标位置驻留 10 秒（10s 内不再运动）
+                if self._post_dash_hold:
+                    self._post_dash_hold = False
+                    if self.mode == 2:
+                        # 随机移动：驻留 10 秒后恢复巡航
+                        self.hold = 1
+                        self.target = self.cur
+                        self._next_pick = None
+                        if self._resume_task:
+                            self._resume_task.cancel()
+                        self._resume_task = self.link._spawn(self._resume_later(10.0))
+                    elif self.mode == 3:
+                        # 末端移动：驻留后保持停止，直到下一次发射指令
+                        self.prog = 0
+                        self._next_pick = None
+                # 巡航：仅自动程序（开始指令/发射指令启动）到位后驻留「运动间隔」换点；
+                # 手动目标到位即停（与自动模式完全独立）
+                if self.src_manual:
+                    self.prog = 0
+                elif self.mode >= 2:
+                    if self._next_pick is None:
+                        self._next_pick = t + float(self.current[3]) / 1000.0
+                    elif t >= self._next_pick:
+                        self._wander_pick()
             else:
                 self.cur += step if self.target > self.cur else -step
-        self.up_data(BASE_STATE, struct.pack("<ffB", self.cur, self.target, self.running))
+        self.up_data(BASE_STATE,
+                     struct.pack("<ffBBBB", self.cur, self.target, self.enabled, self.light, self.door,
+                                 self.started))
 
     def on_cmd(self, cmd: int, data: bytes, seq: int) -> None:
         if cmd == BASE_MODE:
@@ -350,10 +411,91 @@ class _BaseSim(_SimDevice):
             self.up(BASE_MODE, bytes([self.mode]), seq)
         elif cmd == BASE_TARGET:
             (self.target,) = struct.unpack_from("<f", data, 0)
+            if len(data) >= 5:  # v0.2.1：BTARGET 追加速度选择位
+                self.speed_sel = data[4]
+            self.dash = 1 if self.speed_sel else 0
+            self._next_pick = None
+            self.hold = 0
+            self.src_manual = True
+            self.prog = 0    # 切换目标后自动停止；开始指令后前往新目标（纯前往，不进入巡航）
             self.up(BASE_TARGET, struct.pack("<f", self.target), seq)
         elif cmd == BASE_RUN:
-            self.running = data[0] if data else 0
-            self.up(BASE_RUN, bytes([self.running]), seq)
+            self.enabled = data[0] if data else 0
+            self._next_pick = None
+            self.dash = 0
+            self.hold = 0
+            self.started = 0  # 使能/失能后均为停止状态，须开始指令进入开启状态
+            if not self.enabled:
+                # 失能：清运动程序；静止时目标位置与当前位置一致
+                self.prog = 0
+                self.target = self.cur
+            else:
+                # 使能完成默认停止：上电待命，等开始指令/发射指令才运动
+                self.prog = 0
+                self.target = self.cur
+            self.up(BASE_RUN, bytes([self.enabled]), seq)
+        elif cmd == BASE_LIGHT:
+            self.light = data[0] if data else 0
+            self.up(BASE_LIGHT, bytes([self.light]), seq)
+        elif cmd == BASE_DOOR:
+            self.door = data[0] if data else 0
+            if data and data[0] == 0 and self.enabled:
+                # 停止指令（急停）：原地停住（保持使能）并进入停止状态；不发开始指令不再运动
+                self.started = 0
+                self.hold = 1
+                self.target = self.cur
+                self._next_pick = None
+            elif data and data[0] == 1:
+                # 开始指令：进入开启状态并立即开始移动（取消停止；有未完成目标先前往该目标）
+                self.started = 1
+                self.hold = 0
+                self._next_pick = None
+                if self.enabled:
+                    pending = abs(self.target - self.cur) > 1e-6
+                    self.prog = 1
+                    if pending:
+                        pass  # 前往未完成目标
+                    elif self.mode == 0:
+                        self.target = 0.0
+                    elif self.mode >= 2:
+                        self._wander_pick()
+            self.up(BASE_DOOR, bytes([self.door]), seq)
+        elif cmd == BASE_TRIG:
+            if not self.enabled or not self.started:
+                # 失能/停止状态都是硬门槛：发射触发不允许隐式使能，须先 BRUN=1 + 开始指令
+                self.up(BASE_TRIG, bytes([2]), seq)  # 2 = STATE_DENIED
+                return
+            self.up(BASE_TRIG, bytes([1]), seq)
+            self.src_manual = False
+            if self.mode == 0:   # 固定：回到中间
+                self.target = 0.0
+                self.dash = 0
+                self.prog = 1
+            elif self.mode == 1:  # 随机固定：每次触发用停止速度去一个随机位置
+                self.target = self._rand_point()
+                self.dash = 1
+                self.prog = 1
+            else:                 # 随机/末端：等待期巡航照常，延迟（末端 +1.2s）到后用停止速度冲刺
+                self.link._spawn(self._trigger_seq())
+
+    async def _resume_later(self, sec: float) -> None:
+        await asyncio.sleep(sec)
+        self.hold = 0  # 10s 到：解除停止，继续移动
+
+    async def _trigger_seq(self) -> None:
+        delay = float(self.current[4]) / 1000.0
+        if self.mode == 3:
+            delay += 1.2  # 末端移动：发射延迟 +1.2s 后才开始冲刺
+        if delay > 0:
+            await asyncio.sleep(delay)
+            # 等待期间被停止指令/失能/切手动：取消本次冲刺
+            if not self.enabled or not self.started or self.src_manual:
+                return
+        self.hold = 0
+        self.target = self._rand_point()
+        self.dash = 1
+        self.prog = 1
+        self._post_dash_hold = True  # 冲刺到位后：停到目标位置驻留 10 秒
 
 
 class _HostSim:

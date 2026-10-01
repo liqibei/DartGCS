@@ -70,6 +70,11 @@ class BlockCmds:
         return self.base + SUB_PARAM + 0x07
 
     @property
+    def load(self) -> int:
+        """v0.2.1 新增：flash 已存值 → 当前值（不恢复出厂，仅放弃会话修改）。"""
+        return self.base + SUB_PARAM + 0x08
+
+    @property
     def var_catalog_get(self) -> int:
         return self.base + SUB_VAR + 0x00
 
@@ -115,6 +120,9 @@ LAUNCHER_STATE = BLOCK_LAUNCHER + 0x311
 BASE_MODE = BLOCK_BASE + 0x201
 BASE_TARGET = BLOCK_BASE + 0x202
 BASE_RUN = BLOCK_BASE + 0x203
+BASE_LIGHT = BLOCK_BASE + 0x204  # 灯开关（0=灭 / 1=亮），v0.2.1 新增
+BASE_DOOR = BLOCK_BASE + 0x205   # 舱门开关（0=关 / 1=开），v0.2.1 新增
+BASE_TRIG = BLOCK_BASE + 0x206   # 发射触发：基地开始执行档位程序（联动时由主机转发镖架触发），v0.2.1 新增
 BASE_STATE = BLOCK_BASE + 0x311
 
 # ---- 应答配对表：请求 CMD → 应答 CMD ----
@@ -130,6 +138,7 @@ def _bind_block(base: int) -> None:
             base + SUB_PARAM + 0x04: base + SUB_PARAM + 0x05,  # write
             base + SUB_PARAM + 0x06: base + SUB_PARAM + 0x05,  # save → 通用结果
             base + SUB_PARAM + 0x07: base + SUB_PARAM + 0x05,  # reset → 通用结果
+            base + SUB_PARAM + 0x08: base + SUB_PARAM + 0x05,  # load（v0.2.1）→ 通用结果
             base + SUB_VAR + 0x00: base + SUB_VAR + 0x01,      # var catalog
             base + SUB_VAR + 0x02: base + SUB_VAR + 0x02,      # subscribe 原值应答
             base + SUB_VAR + 0x03: base + SUB_VAR + 0x03,      # unsubscribe 原值应答
@@ -156,6 +165,9 @@ RESPONSE_OF.update(
         BASE_MODE: BASE_MODE,
         BASE_TARGET: BASE_TARGET,
         BASE_RUN: BASE_RUN,
+        BASE_LIGHT: BASE_LIGHT,
+        BASE_DOOR: BASE_DOOR,
+        BASE_TRIG: BASE_TRIG,
     }
 )
 

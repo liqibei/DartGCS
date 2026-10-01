@@ -84,6 +84,12 @@ class ParamService:
         rsp = await self.manager.request(dev_id, block.save, b"")
         return rsp.payload[2]
 
+    async def load(self, dev_id: int) -> int:
+        """v0.2.1：flash 已存值 → 当前值（放弃会话修改，区别于 reset 恢复出厂）。"""
+        block = self._block(dev_id)
+        rsp = await self.manager.request(dev_id, block.load, b"")
+        return rsp.payload[2]
+
     async def reset(self, dev_id: int) -> int:
         block = self._block(dev_id)
         rsp = await self.manager.request(dev_id, block.reset, b"")

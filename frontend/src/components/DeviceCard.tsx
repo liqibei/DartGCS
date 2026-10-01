@@ -1,5 +1,6 @@
 import type { Device } from "../types";
 import { Sparkline } from "./Sparkline";
+import { BaseQuick } from "./BaseQuick";
 
 const KIND_LABEL: Record<Device["kind"], string> = {
   launcher: "发射架",
@@ -16,7 +17,7 @@ export default function DeviceCard({
   history: Map<string, number[]>;
 }) {
   return (
-    <div className="card">
+    <div className={`card ${device.kind === "base" ? "card-base" : ""}`}>
       <div className="card-head">
         <span className={`dot ${device.online ? "on" : "off"}`} />
         <b>{device.name}</b>
@@ -27,7 +28,10 @@ export default function DeviceCard({
         {device.online && device.battery_mv ? (device.battery_mv / 1000).toFixed(2) : "--"} V ·
         丢帧率 {device.loss_rate}
       </div>
-      {device.telemetry.length === 0 ? (
+      {device.kind === "base" ? (
+        // 基地：位置条 + 模式 + 跟随子页的基本控制，不放遥测图表
+        <BaseQuick />
+      ) : device.telemetry.length === 0 ? (
         <div className="muted">无遥测变量</div>
       ) : (
         <table className="tele">

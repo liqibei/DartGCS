@@ -1,4 +1,4 @@
-"""WebSocket 推送：设备快照（1s）+ 遥测批次（100ms）。"""
+"""WebSocket 推送：设备快照（1s）+ 遥测批次（50ms，BSTATE 20Hz 直通）。"""
 from __future__ import annotations
 
 import asyncio
@@ -37,7 +37,7 @@ class WsHub:
             await asyncio.sleep(interval)
             await self.broadcast({"type": "devices", "data": manager.snapshot()})
 
-    async def telemetry_loop(self, hub, interval: float = 0.1) -> None:
+    async def telemetry_loop(self, hub, interval: float = 0.05) -> None:
         while True:
             await asyncio.sleep(interval)
             pending = hub.take_pending()

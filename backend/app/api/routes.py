@@ -45,6 +45,7 @@ class ModeIn(BaseModel):
 
 class TargetIn(BaseModel):
     pos: float
+    sel: int = 0  # 速度选择：0=平移速度 / 1=停止速度（v0.2.1 BTARGET 追加）
 
 
 class RunIn(BaseModel):
@@ -130,6 +131,12 @@ async def device_param_save(request: Request, dev_id: int):
     return {"result": await _svc(request, "params").save(dev_id)}
 
 
+@router.post("/devices/{dev_id}/params/load")
+async def device_param_load(request: Request, dev_id: int):
+    """从 Flash 读取：已存值恢复为当前值（放弃会话修改）。"""
+    return {"result": await _svc(request, "params").load(dev_id)}
+
+
 @router.post("/devices/{dev_id}/params/reset")
 async def device_param_reset(request: Request, dev_id: int):
     return {"result": await _svc(request, "params").reset(dev_id)}
@@ -211,6 +218,7 @@ async def launcher_launch(request: Request, body: LaunchIn):
     )
     state = request.app.state
     state.last_session_by_dart[0x30 | (body.slot - 1)] = archive_list_latest(state)
+    await _base_autolink_start(request, 1)
     return {"ok": True, "slot": slot}
 
 
@@ -225,6 +233,8 @@ async def launcher_four(request: Request):
         rsp = await _svc(request, "manager").request(0x10, 0x2202, b"", timeout=0.5)
     except Exception as exc:
         raise HTTPException(502, str(exc)) from exc
+    if rsp.payload[0] == 0:
+        await _base_autolink_start(request, 1)
     return {"ok": rsp.payload[0] == 0, "code": rsp.payload[0], "slot": rsp.payload[1]}
 
 
@@ -234,6 +244,7 @@ async def launcher_abort(request: Request):
         rsp = await _svc(request, "manager").request(0x10, 0x2203, b"", timeout=0.5)
     except Exception as exc:
         raise HTTPException(502, str(exc)) from exc
+    await _base_autolink_start(request, 0)
     return {"ok": rsp.payload[0] == 0}
 
 
@@ -247,6 +258,33 @@ async def launcher_mode(request: Request, body: ModeIn):
 
 
 # ---- 基地 ----------------------------------------------------------------
+async def _base_autolink_start(request: Request, run: int) -> None:
+    """联动开关打开时：发射后自动下发发射触发帧（真机上即镖架→主机→基地的链路）；
+    急停后让装甲板立即停止运动（目标=当前位置，保持使能——失能是意外保护，只手动操作）。
+    联动失败不阻塞发射主流程，界面上运行状态可见。"""
+    if not getattr(request.app.state, "base_autolink", False):
+        return
+    try:
+        if run:
+            await _svc(request, "manager").request(0x20, 0x3206, b"")
+        else:
+            snap = {s["name"]: s["value"] for s in _svc(request, "hub").snapshot(0x20)}
+            cur = float(snap.get("cur_pos_mm", 0.0))
+            await _svc(request, "manager").request(
+                0x20, 0x3202, struct.pack("<fB", cur, 0))
+    except Exception:
+        pass  # 联动启停失败不阻塞发射主流程，界面上运行状态可见
+
+
+@router.get("/base/state")
+async def base_state(request: Request):
+    try:
+        rsp = await _svc(request, "manager").request(0x20, 0x3201, b"")
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"mode": rsp.payload[0] if rsp.payload else 0}
+
+
 @router.post("/base/mode")
 async def base_mode(request: Request, body: ModeIn):
     try:
@@ -260,11 +298,11 @@ async def base_mode(request: Request, body: ModeIn):
 async def base_target(request: Request, body: TargetIn):
     try:
         await _svc(request, "manager").request(
-            0x20, 0x3202, struct.pack("<f", body.pos)
+            0x20, 0x3202, struct.pack("<fB", body.pos, 1 if body.sel else 0)
         )
     except Exception as exc:
         raise HTTPException(502, str(exc)) from exc
-    return {"ok": True, "pos": body.pos}
+    return {"ok": True, "pos": body.pos, "sel": body.sel}
 
 
 @router.post("/base/run")
@@ -274,6 +312,70 @@ async def base_run(request: Request, body: RunIn):
     except Exception as exc:
         raise HTTPException(502, str(exc)) from exc
     return {"ok": True, "run": body.run}
+
+
+class LightIn(BaseModel):
+    on: bool
+
+
+@router.post("/base/light")
+async def base_light(request: Request, body: LightIn):
+    try:
+        await _svc(request, "manager").request(0x20, 0x3204, bytes([1 if body.on else 0]))
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"ok": True, "on": body.on}
+
+
+@router.post("/base/door")
+async def base_door(request: Request, body: LightIn):
+    """舱门开关（0x3205）：开启指令=开门。"""
+    try:
+        await _svc(request, "manager").request(0x20, 0x3205, bytes([1 if body.on else 0]))
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"ok": True, "on": body.on}
+
+
+@router.post("/base/trigger")
+async def base_trigger(request: Request):
+    """发射触发（0x3206）：手动模拟镖架经主机发来的发射指令，基地开始执行档位程序。
+    失能状态下设备拒绝（不隐式使能），须先 BRUN=1。"""
+    try:
+        rsp = await _svc(request, "manager").request(0x20, 0x3206, b"")
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
+    if rsp.payload and rsp.payload[0] == 2:
+        raise HTTPException(409, "基地未使能，请先使能（0x3203 BRUN=1）")
+    return {"ok": True}
+
+
+@router.get("/base/autolink")
+def base_autolink_get(request: Request):
+    return {"enabled": bool(getattr(request.app.state, "base_autolink", False))}
+class AutolinkIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/base/autolink")
+def base_autolink_set(request: Request, body: AutolinkIn):
+    request.app.state.base_autolink = body.enabled
+    return {"ok": True, "enabled": body.enabled}
+
+
+# ---- 手机控制热点 ----------------------------------------------------------
+@router.get("/hotspot")
+async def hotspot_status(request: Request):
+    return await request.app.state.hotspot.status()
+
+
+class HotspotIn(BaseModel):
+    on: bool
+
+
+@router.post("/hotspot")
+async def hotspot_toggle(request: Request, body: HotspotIn):
+    return await request.app.state.hotspot.set_enabled(body.on)
 
 
 # ---- 发次归档 ------------------------------------------------------------

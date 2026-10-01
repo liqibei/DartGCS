@@ -1,8 +1,11 @@
 from .cmd import (
+    BASE_DOOR,
+    BASE_LIGHT,
     BASE_MODE,
     BASE_RUN,
     BASE_STATE,
     BASE_TARGET,
+    BASE_TRIG,
     BLOCKS,
     BlockCmds,
     DBG_ECHO,
@@ -40,7 +43,7 @@ from .frame import (
 from .crc import crc16, crc8
 
 __all__ = [
-    "BASE_MODE", "BASE_RUN", "BASE_STATE", "BASE_TARGET",
+    "BASE_DOOR", "BASE_LIGHT", "BASE_MODE", "BASE_RUN", "BASE_STATE", "BASE_TARGET", "BASE_TRIG",
     "BLOCKS", "BlockCmds", "DBG_ECHO", "DBG_PRINT",
     "LAUNCHER_MODE", "LAUNCHER_STATE", "LAUNCH_ABORT", "LAUNCH_FOUR",
     "LAUNCH_RESULT", "LAUNCH_SINGLE",
